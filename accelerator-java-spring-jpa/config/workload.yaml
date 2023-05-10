@@ -1,0 +1,25 @@
+apiVersion: carto.run/v1alpha1
+kind: Workload
+metadata:
+  name: java-spring-microservice-accelerator
+  namespace: deveco-sandbox
+  labels:
+    app.kubernetes.io/part-of: java-spring-microservice-accelerator
+    apps.tanzu.vmware.com/workload-type: web
+    apps.tanzu.vmware.com/has-tests: "true"
+    apps.tanzu.vmware.com/language: java
+    workload-intent: code-analysis
+spec:
+  source:
+    git:
+      url: https://github.aetna.com/E2E-Delivery-Experience/accelerator-java-spring-jpa
+      ref:
+        branch: dev
+  build:
+    env:
+      - name: BP_JVM_VERSION
+        value: "17"
+  params:
+    - name: annotations
+      value:
+        autoscaling.knative.dev/minScale: "1"

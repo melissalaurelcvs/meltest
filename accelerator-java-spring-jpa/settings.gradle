@@ -1,0 +1,20 @@
+pluginManagement {
+    repositories {
+        maven {
+            url "https://nexus-ha.cvshealth.com:9443/repository/maven-public"
+        }
+        maven {
+            url "https://nexus-ha.cvshealth.com:9443/repository/maven-central"
+        }
+        gradlePluginPortal()
+    }
+    resolutionStrategy {
+        eachPlugin {
+            if (requested.id.id == "org.sonarqube") {
+                useModule("org.sonarsource.scanner.gradle:sonarqube-gradle-plugin:${requested.version}")
+            }
+        }
+    }
+}
+
+rootProject.name = 'artifactIdValue'

@@ -1,0 +1,110 @@
+#!/bin/bash
+set -e
+
+ACCELERATOR_NAME="000-java-spring-microservice"
+ACCELERATOR_URL="https://accelerator.dev.e2e.cvshealthcloud.com/"
+
+TEMP="/tmp"
+OUTPUT_DIRECTORY=$TEMP/$ACCELERATOR_NAME
+
+log() {
+  GREEN='\033[0;32m'
+  NO_COLOR='\033[0m'
+  echo -e "$GREEN$1$NO_COLOR\n"
+}
+
+includeAcceleratorTests() {
+  ACC_TEST_FOLDER=java/com/cvs/dso/acctest/$1
+
+  mkdir -p $OUTPUT_DIRECTORY/src/test/"$ACC_TEST_FOLDER"
+  cp -R src/acc-test/"$ACC_TEST_FOLDER"/ $OUTPUT_DIRECTORY/src/test/"$ACC_TEST_FOLDER"/
+}
+
+verifyAccelerator() {
+  BUILD_TOOL=$1
+  JAVA_VERSION=$2
+  DATABASE_OPTION=$3
+  INCLUDE_REDIS=$4
+  ACCELERATOR_OPTIONS="{
+    \"buildTool\":\"$BUILD_TOOL\",
+    \"javaVersionValue\":\"$JAVA_VERSION\",
+    \"databaseOption\":\"$DATABASE_OPTION\",
+    \"includeRedisWithPostgres\":$INCLUDE_REDIS,
+    \"includeRedisWithOracle\":$INCLUDE_REDIS,
+    \"groupIdValue\":\"com.cvs\",
+    \"artifactId\":\"acc-test\",
+    \"packageName\":\"com.cvs.acctest\",
+    \"nameValue\":\"Test-Project-Name\",
+    \"descriptionValue\":\"Test-Description\"
+  }"
+
+  rm -rf $TEMP/$ACCELERATOR_NAME.zip $OUTPUT_DIRECTORY
+
+  log "Starting accelerator verification with options:
+  - Build Tool: $BUILD_TOOL
+  - Java: $JAVA_VERSION
+  - Database Option: $DATABASE_OPTION
+  - Include Redis: $INCLUDE_REDIS"
+
+  log 'Generating accelerator on TAP...'
+  tanzu acc generate $ACCELERATOR_NAME --options "$ACCELERATOR_OPTIONS" --server-url $ACCELERATOR_URL --output-dir $TEMP
+
+  log 'Unzipping accelerator...'
+  unzip -d $TEMP $OUTPUT_DIRECTORY
+
+  log 'Including accelerator tests...'
+  includeAcceleratorTests common
+  includeAcceleratorTests "$BUILD_TOOL"
+  includeAcceleratorTests java"$JAVA_VERSION"
+
+  if [[ "$DATABASE_OPTION" = 'postgres' || "$DATABASE_OPTION" = 'oracle' ]]; then
+    includeAcceleratorTests jpa
+    includeAcceleratorTests docker
+  else
+    includeAcceleratorTests nojpa
+    includeAcceleratorTests nodocker
+  fi
+
+  if [ "$DATABASE_OPTION" = 'postgres' ]; then
+    includeAcceleratorTests postgres
+  fi
+
+  if [ "$DATABASE_OPTION" = 'oracle' ]; then
+    includeAcceleratorTests oracle
+  fi
+
+  if [ "$INCLUDE_REDIS" = true ]; then
+    includeAcceleratorTests redis
+  else
+    includeAcceleratorTests noredis
+  fi
+
+  log 'Verifying accelerator...'
+  pushd $OUTPUT_DIRECTORY
+  bin/test
+  popd
+}
+
+log "Script's pre reqs:
+  - kube config pointed at TAP dev and user logged in
+  - user to have permissions to generate accelerators on TAP dev
+  - tanzu cli with accelerator plugin installed and available on the path
+  - jdk 17+ installed
+  - Docker/Rancher Desktop installed and running"
+
+SCRIPT=$(readlink -f "$0")
+SCRIPT_PATH=$(dirname "$SCRIPT")
+pushd "$SCRIPT_PATH"/..
+
+#options:         build  java Database redis
+verifyAccelerator gradle "17" postgres true
+verifyAccelerator gradle "17" postgres false
+verifyAccelerator maven  "11" postgres true
+verifyAccelerator maven  "11" postgres false
+verifyAccelerator gradle "17" oracle   true
+verifyAccelerator gradle "17" oracle   false
+verifyAccelerator maven  "11" oracle   true
+verifyAccelerator maven  "11" oracle   false
+verifyAccelerator gradle "8"  memory   false
+popd
+

@@ -1,0 +1,74 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '2.7.3'
+    id 'io.spring.dependency-management' version '1.0.15.RELEASE'
+    id 'jacoco'
+    id 'org.sonarqube' version '3.3'
+}
+
+group = 'groupIdValue'
+version = '1.0.0-SNAPSHOT'
+compileJava {
+    sourceCompatibility = '17'
+    targetCompatibility = '17'
+}
+
+ext {
+    cucumberVersion = '7.11.1'
+    restassuredVersion = '5.3.0'
+    testcontainersVersion = '1.17.6'
+}
+
+repositories {
+    maven {
+        url 'https://nexus-ha.cvshealth.com:9443/repository/maven-public'
+    }
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+    implementation 'org.springframework.boot:spring-boot-starter-cache'
+    implementation 'redis.clients:jedis'
+    implementation 'org.flywaydb:flyway-core'
+    runtimeOnly 'org.postgresql:postgresql'
+    implementation 'com.oracle.database.jdbc:ojdbc10:19.18.0.0'
+    implementation 'org.springdoc:springdoc-openapi-webmvc-core:1.6.11'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.junit.platform:junit-platform-suite'
+    testImplementation "io.cucumber:cucumber-java:$cucumberVersion"
+    testImplementation "io.cucumber:cucumber-spring:$cucumberVersion"
+    testImplementation "io.cucumber:cucumber-junit-platform-engine:$cucumberVersion"
+    testImplementation "io.rest-assured:rest-assured:$restassuredVersion"
+    testImplementation "io.rest-assured:json-path:$restassuredVersion"
+    testImplementation "io.rest-assured:xml-path:$restassuredVersion"
+    testImplementation "org.testcontainers:testcontainers:$testcontainersVersion"
+    testImplementation "org.testcontainers:junit-jupiter:$testcontainersVersion"
+    testImplementation "org.testcontainers:postgresql:$testcontainersVersion"
+    testImplementation "org.testcontainers:oracle-xe:$testcontainersVersion"
+
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+}
+
+/*configurations {
+    // Exclude JUnit 4.x in favor of JUnit Jupiter (a.k.a. JUnit 5.x)
+    all*.exclude group: 'junit', module: 'junit'
+    all*.exclude group: 'org.junit.vintage'
+}*/
+
+test {
+    useJUnitPlatform()
+    finalizedBy jacocoTestReport
+}
+
+jacocoTestReport {
+    reports {
+        xml.enabled true
+    }
+}

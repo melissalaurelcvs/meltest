@@ -1,0 +1,42 @@
+version: "3.9"
+volumes:
+  postgres:
+    driver: local
+services:
+  postgres:
+    image: postgres:14
+    restart: always
+    environment:
+      - POSTGRES_DB=development
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+    ports:
+      - '5432:5432'
+  redis:
+    image: redis:7
+    restart: always
+    environment:
+      - ALLOW_EMPTY_PASSWORD=yes
+      - REDIS_DISABLE_COMMANDS=FLUSHDB,FLUSHALL
+      - REDIS_PORT_NUMBER=6379
+    ports:
+      - '6379:6379'
+  oracle:
+    image: oracledb19c/oracle.19.3.0-ee:oracle19.3.0-ee
+    container_name: oracle
+    restart: always
+    ports:
+      - "1521:1521"
+      - "5500:5500"
+    environment:
+      - ORACLE_ALLOW_REMOTE=true
+      - ORACLE_PWD=oracle
+      - ORACLE_USER=system
+      - ORACLE_CHARACTERSET=AL32UTF8
+      - ORACLE_SID=development
+      - ORACLE_PDB=ORCLPDB1
+      - PROTOCOL=tcp
+      - ORACLE_EDITION=standard
+    volumes:
+      - ./data:/opt/oracle/oradata
+      - ./scripts:/opt/oracle/scripts/startup

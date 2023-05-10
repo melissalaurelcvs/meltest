@@ -1,0 +1,154 @@
+#!/usr/bin/env groovy
+
+
+@Library(['cicd-util-library', 'cf-pipeline']) _
+
+properties([
+        [$class: 'JobRestrictionProperty'],
+        buildDiscarder(logRotator(numToKeepStr: '10', daysToKeepStr: '180')),
+        gitLabConnection('gitw'),
+])
+// docker images
+def pg = docker.image('edb-postgres-advanced:13.6')
+def flyway = docker.image('flyway/flyway:7-alpine')
+def config
+def pom
+def pomFile = "pom.xml"
+
+currentBuild.result = "SUCCESS"
+
+config = [
+        "domain": "E2E-Delivery-Experience",
+        "name": "accelerator-java-spring-boot-jpa",
+        "mailTo": "saicharan.boinepalli@cvshealth.com",
+        "sonar": [
+                "stopOnFailure": false,
+                "src": "src",
+                "binaries": "target",
+                "junit": "target/surefire-reports",
+                "jacoco": "target/site/jacoco/jacoco.xml",
+                "exclusions":"src/test/**/*"
+        ],
+        "checkmarx": [
+                "team": "Retail",
+                "exclusions": "coverage,reports,.scannerwork",
+                "waitForResults": "true"
+        ]
+]
+
+try {
+
+    ansiColor('xterm') {
+
+        node {
+            stage('Checkout') {
+                cleanWs deleteDirs: true
+                checkout scm
+                sh "chmod -R 755 *"
+
+                pom = readMavenPom file: pomFile
+                config.name = pom.artifactId
+                config.version = pom.version
+                config.fullname = config.domain + '-' + config.name
+            }
+
+            // build the application
+            stage('Build') {
+                // use latest maven and jdk 11 from DockerHub: https://hub.docker.com/_/maven
+                // mount the local maven .m2 directory into the container
+                withCredentials([string(credentialsId: 'Docker_Nexus_Repo_Pull', variable: 'DOCKER_REGISTRY')]) {
+                    docker.withRegistry("https://${DOCKER_REGISTRY}", 'Docker_Nexus_Repo_Credentials') {
+                        docker.image("${DOCKER_REGISTRY}/maven:3-jdk-11-slim").inside("-v \$HOME/.m2:/var/maven/.m2 -e MAVEN_CONFIG=/var/maven/.m2") {
+                            docker.image("${DOCKER_REGISTRY}/library/postgres:14").withRun("-e POSTGRES_USER=user"){
+                                // execute mvn setting the home to the directory were .m2 was mounted
+                                //sh 'mvn -Duser.home=
+                                //sh """
+                                //   docker run --name test --rm -e POSTGRES_USER=user -e POSTGRES_PASSWORD=password -e PGDATA=/var/lib/postgresql/data/pgdata -v /tmp:/var/lib/postgresql/data -p 5432:5432 -it postgres:14
+                                //"""
+                                //sh 'cd ./scripts/postgres && ./build.sh && cd -'
+                                sh 'mvn -Duser.home=/var/maven clean install'
+                            }
+
+                        }
+                    }
+
+                }
+
+                // Test result reporting in multiple ways.
+                // Use the one based on test tools used.
+
+                //publish cucumber test results
+                //cucumber 'target/cucumber-reports/Cucumber.json'
+
+                // publish default jenkins test result report
+                junit testResults: 'target/surefire-reports/*.xml'
+
+                // publish allure formatted test results
+                //allure results: [[path: 'target/cucumber'], [path: 'target/surefire-reports']]
+
+                // publish jacoco coverage report
+                jacoco(
+                        execPattern: 'target/*.exec',
+                        classPattern: 'target/classes',
+                        sourcePattern: 'src/main/java',
+                        exclusionPattern: 'src/test*'
+                )
+            }
+
+            stage('Generate Cucumber Reports') {
+                cucumber buildStatus: 'UNSTABLE',
+                        reportTitle: 'Spring Accelerator Cal Report',
+                        fileIncludePattern: 'target/cucumber-reports/*.json',
+                        trendsLimit: 10
+                archiveArtifacts artifacts: 'target/cucumber-reports/*.json'
+            }
+            // static code quality analysis
+            // Included in the pipeline library helper functions
+            // https://docs.sonarqube.org/display/SCAN/Analyzing+with+SonarQube+Scanner+for+Jenkins
+            stage('Quality Analysis w/SonarQube') {
+                sonarqube.scan(stopOnFailure:config.sonar.stopOnFailure) {
+                    sh "sonar-scanner -Dsonar.projectKey=${config.domain}-${config.name} -Dsonar.sources=${config.sonar.src} -Dsonar.java.binaries=${config.sonar.binaries} -Dsonar.junit.reportPaths=${config.sonar.junit} -Dsonar.coverage.jacoco.xmlReportPaths=${config.sonar.jacoco} -Dsonar.exclusions=${config.sonar.exclusions}"
+                }
+            }
+
+            // Lifecycle Analysis with Nexus IQ
+            // Included in the pipeline library helper functions
+            stage ('Lifecycle Analysis') {
+                nexus.evaluatePolicy(domain: "Java-${config.domain}", application: config.name)
+            }
+
+            // Security analysis with Checkmarx
+            // Included in the pipeline library helper functions
+            // Long running Checkmarx scan should be moved to a separate job.  See the Jenkinsfile.checkmarx.
+            stage("Security Analysis w/Checkmarx") {
+                checkmarx(domain: config.domain, application: config.name, team: config.checkmarx.team, excludeFolders: config.checkmarx.exclusions, waitForResults: config.checkmarx.waitForResults, ITPMAcronym: config.domain)
+                if (config.checkmarx.waitForResults == 'true') {
+                    emailext attachmentsPattern: '**/CxSASTReport*.pdf	', body: '', subject: 'Checkmarx Scan Report', recipientProviders: [developers(), requestor()], to: config.mailTo
+                }
+            }
+            stage('Archive') {
+                dir('target') {
+                    archiveArtifacts artifacts: '*.jar,*.zip', onlyIfSuccessful: true, fingerprint: true
+                }
+            }
+
+
+
+
+            // Save the files that will be needed to deploy the application.
+            // Do not stash all files in the workspace.
+            // Use stash only for a small number of files of <100MB.
+            // For large files use Nexus or Artifactory.
+            // stash name: 'DevSecOps-Java-demo-stash', allowEmpty: true, includes: 'target/*.jar, *.yml, *.xml, *.py'
+        }
+
+
+
+    }
+
+} catch (err) {
+    // If there was an exception thrown, the build failed
+    currentBuild.result = "FAILURE"
+    notify.email(message: err.toString(), mailTo: config.mailTo)
+    throw err
+}

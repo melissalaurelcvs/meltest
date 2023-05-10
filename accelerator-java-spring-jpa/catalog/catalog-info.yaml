@@ -1,0 +1,21 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: java-spring-microservice-accelerator
+  description: Java Spring JPA Accelerator App
+  title: Java Spring JPA Accelerator
+  tags:
+    - java
+    - rest
+    - microservice
+    - accelerator-demo
+  links:
+    - url: https://aetnao365.sharepoint.com/sites/DSO/SitePages/devecosystem.aspx
+      title: DevEcosystem - Learn More
+  annotations:
+    "backstage.io/kubernetes-label-selector": "app.kubernetes.io/part-of=java-spring-microservice-accelerator"
+spec:
+  type: service
+  lifecycle: production
+  owner: devecosystem
+  system: any
